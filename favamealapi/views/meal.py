@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from favamealapi.models import Meal, MealRating, Restaurant, FavoriteMeal
 from favamealapi.views.restaurant import RestaurantSerializer
-
+from django.db.models import Avg
 
 class MealSerializer(serializers.ModelSerializer):
     """JSON serializer for meals"""
@@ -16,8 +16,8 @@ class MealSerializer(serializers.ModelSerializer):
     class Meta:
         model = Meal
         # TODO: Add 'user_rating', 'avg_rating', 'is_favorite' fields to MealSerializer
-        fields = ('id', 'name', 'restaurant', 'is_favorite')
-
+        fields = ('id', 'name', 'restaurant', 'is_favorite', 'mealrating', 'rating', 'avg_rating')
+        depth = 1
 
 
 class MealView(ViewSet):
@@ -50,7 +50,8 @@ class MealView(ViewSet):
             meal = Meal.objects.get(pk=pk)
 
             # TODO: Get the rating for current user and assign to `user_rating` property
-
+            user_rating = MealRating.objects.get(
+                user=request.auth.user, meal=meal)
             # TODO: Get the average rating for requested meal and assign to `avg_rating` property
 
             # TODO: Assign a value to the `is_favorite` property of requested meal
@@ -66,11 +67,24 @@ class MealView(ViewSet):
         Returns:
             Response -- JSON serialized list of meals
         """
-        meals = Meal.objects.all()
+        meals = Meal.objects.annotate(avg_rating=Avg('mealrating__rating'))
+        
         for meal in meals:
             meal.is_favorite = request.auth.user in meal.favorites.all()
-        # TODO: Get the rating for current user and assign to `user_rating` property
+            # rating_sum = 0
+            # connected_ratings = MealRating.objects.filter(meal=meal)
+            # print(connected_ratings)
+            try:
+                rating_object = MealRating.objects.get(user=request.auth.user, meal=meal)
+                meal.rating = rating_object.rating
+            except MealRating.DoesNotExist:
+                meal.rating = 0
+        
+            # print(connected_ratings.rating)
+        # meal.avg_rating = sum(connected_ratings.rating)//len(connected_ratings)
 
+        # TODO: Get the rating for current user and assign to `user_rating` property
+            # meal.user_rating = MealRating.objects.get(user=request.auth.user, meal= meal)
         # TODO: Get the average rating for each meal and assign to `avg_rating` property
 
         # TODO: Assign a value to the `is_favorite` property of each meal
@@ -89,12 +103,34 @@ class MealView(ViewSet):
     # TODO: Add a custom action named `favorite` that will allow a client to send a
     #  POST request to /meals/3/favorite and add the meal as a favorite
     @action(methods=['post'], detail=True)
+    def rate(self, request, pk):
+        """post request for meal rating"""
+        # user = request.auth.user
+        meal = Meal.objects.get(pk=pk)
+        user_rating = request.data['rating']
+        rating = MealRating.objects.create(
+            user=request.auth.user, meal=meal, rating=user_rating)
+        return Response({'message': 'rating added'}, status=status.HTTP_201_CREATED)
+
+    @action(methods=['put'], detail=True)
+    def rate(self, request, pk):
+        """put request for meal rating"""
+        meal = Meal.objects.get(pk=pk)
+        user_rating = request.data['rating']
+        rating = MealRating.objects.get(meal=meal, user=request.auth.user)
+        rating.rating = user_rating
+        rating.save()
+        return Response({'message': 'rating updated'}, status=status.HTTP_204_NO_CONTENT)
+
+    @action(methods=['post'], detail=True)
     def favorite(self, request, pk):
         """post request for mealfavorite"""
         user = request.auth.user
         meal = Meal.objects.get(pk=pk)
         meal.favorites.add(user)
         return Response({'message': 'favorite added'}, status=status.HTTP_201_CREATED)
+
+
     @action(methods=['delete'], detail=True)
     def unfavorite(self, request, pk):
         """delete favorite request"""
