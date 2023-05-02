@@ -16,7 +16,7 @@ class MealSerializer(serializers.ModelSerializer):
     class Meta:
         model = Meal
         # TODO: Add 'user_rating', 'avg_rating', 'is_favorite' fields to MealSerializer
-        fields = ('id', 'name', 'restaurant',)
+        fields = ('id', 'name', 'restaurant', 'is_favorite')
 
 
 
@@ -67,7 +67,8 @@ class MealView(ViewSet):
             Response -- JSON serialized list of meals
         """
         meals = Meal.objects.all()
-
+        for meal in meals:
+            meal.is_favorite = request.auth.user in meal.favorites.all()
         # TODO: Get the rating for current user and assign to `user_rating` property
 
         # TODO: Get the average rating for each meal and assign to `avg_rating` property
@@ -87,6 +88,19 @@ class MealView(ViewSet):
 
     # TODO: Add a custom action named `favorite` that will allow a client to send a
     #  POST request to /meals/3/favorite and add the meal as a favorite
-
+    @action(methods=['post'], detail=True)
+    def favorite(self, request, pk):
+        """post request for mealfavorite"""
+        user = request.auth.user
+        meal = Meal.objects.get(pk=pk)
+        meal.favorites.add(user)
+        return Response({'message': 'favorite added'}, status=status.HTTP_201_CREATED)
+    @action(methods=['delete'], detail=True)
+    def unfavorite(self, request, pk):
+        """delete favorite request"""
+        user = request.auth.user
+        meal = Meal.objects.get(pk=pk)
+        meal.favorites.remove(user)
+        return Response({'message': 'favorite removed'}, status=status.HTTP_204_NO_CONTENT)
     # TODO: Add a custom action named `unfavorite` that will allow a client to send a
     # DELETE request to /meals/3/unfavorite and remove the meal as a favorite

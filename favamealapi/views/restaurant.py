@@ -4,7 +4,9 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from favamealapi.models import Restaurant
-
+from rest_framework.decorators import action
+from django.contrib.auth.models import User
+from django.db.models import Q, Exists
 
 class RestaurantSerializer(serializers.ModelSerializer):
     """JSON serializer for restaurants"""
@@ -12,7 +14,7 @@ class RestaurantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Restaurant
         # TODO: Add 'is_favorite' field to RestaurantSerializer
-        fields = ('id', 'name', 'address',)
+        fields = ('id', 'name', 'address', 'is_favorite')
 
 
 class RestaurantView(ViewSet):
@@ -57,7 +59,10 @@ class RestaurantView(ViewSet):
         Returns:
             Response -- JSON serialized list of restaurants
         """
+        user = request.auth.user
         restaurants = Restaurant.objects.all()
+        for restaurant in restaurants:
+            restaurant.is_favorite = request.auth.user in restaurant.favorites.all()
 
         # TODO: Add the correct value to the `is_favorite` property of each restaurant
         # Hint -- Iterate over restaurants and look at each one's collection of favorites.
@@ -66,6 +71,22 @@ class RestaurantView(ViewSet):
         serializer = RestaurantSerializer(restaurants, many=True)
 
         return Response(serializer.data)
+    
+    @action(methods=['POST'], detail=True)
+    def favorite(self, request, pk):
+        """post request for favoriting restaurant by user"""
+        user = request.auth.user
+        restaurant = Restaurant.objects.get(pk=pk)
+        restaurant.favorites.add(user)
+        return Response({'message': 'favorite added'}, status=status.HTTP_201_CREATED)
+
+    @action(methods=['delete'], detail=True)
+    def unfavorite(self, request, pk):
+        """delete request for removing from favorites"""
+        user=request.auth.user
+        restaurant = Restaurant.objects.get(pk=pk)
+        restaurant.favorites.remove(user)
+        return Response({'message': 'favorite removed'}, status=status.HTTP_204_NO_CONTENT)
 
     # TODO: Write a custom action named `favorite` that will allow a client to
     # send a POST request to /restaurant/2/favorite and add the restaurant as a favorite
